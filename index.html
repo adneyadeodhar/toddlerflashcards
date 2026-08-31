@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#ffe680" />
+  <title>Tap & Learn</title>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: "Comic Sans MS", "Segoe UI", system-ui, sans-serif;
+      overscroll-behavior: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(160deg, #fff3b0 0%, #ffd6e0 50%, #c1f0dc 100%);
+      max-width: 480px;
+      margin: 0 auto;
+      box-shadow: 0 0 40px rgba(0,0,0,0.15);
+    }
+
+    /* Voice picker bar */
+    .voicebar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 10px 12px 0;
+      flex-shrink: 0;
+    }
+    #voiceSelect {
+      flex: 1;
+      min-width: 0;
+      border: 2px solid rgba(0,0,0,0.12);
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-size: 15px;
+      font-family: inherit;
+      color: #4a4a4a;
+      background: rgba(255,255,255,0.9);
+    }
+    #voiceTest {
+      border: none;
+      border-radius: 14px;
+      padding: 10px 16px;
+      font-size: 15px;
+      font-weight: bold;
+      color: #fff;
+      background: #4aa96c;
+      box-shadow: 0 3px 0 rgba(0,0,0,0.15);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #voiceTest:active { transform: scale(0.94); }
+
+    /* Category tabs */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      padding: 12px 12px 6px;
+      flex-shrink: 0;
+    }
+    .tab {
+      flex: 1;
+      border: none;
+      border-radius: 18px;
+      padding: 16px 6px;
+      font-size: clamp(18px, 5vw, 30px);
+      font-weight: bold;
+      color: #fff;
+      background: #d98a3a;
+      box-shadow: 0 3px 0 rgba(0,0,0,0.15);
+      cursor: pointer;
+      transition: transform 0.08s ease;
+    }
+    .tab:active { transform: scale(0.94); }
+    .tab.active {
+      background: #d94f7a;
+      color: #fff;
+      box-shadow: 0 4px 0 rgba(0,0,0,0.25);
+    }
+
+    /* The big stage where the picked card shows */
+    .stage {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
+      padding: 6px;
+    }
+    .stage-emoji {
+      font-size: clamp(90px, 38vw, 180px);
+      line-height: 1;
+      transition: transform 0.15s ease;
+    }
+    .stage.pop .stage-emoji { animation: pop 0.4s ease; }
+    @keyframes pop {
+      0%   { transform: scale(0.6) rotate(-6deg); }
+      60%  { transform: scale(1.15) rotate(4deg); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+    .stage-word {
+      margin-top: 8px;
+      font-size: clamp(28px, 11vw, 52px);
+      font-weight: bold;
+      color: #3a3a3a;
+      text-transform: capitalize;
+      letter-spacing: 1px;
+    }
+    .stage-hint {
+      margin-top: 4px;
+      font-size: clamp(13px, 4.5vw, 20px);
+      color: #8a7a5a;
+      opacity: 0.8;
+    }
+
+    /* Grid of tappable cards */
+    .grid {
+      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+      overflow-y: auto;
+      max-height: 55vh;
+    }
+    .card {
+      border: none;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.7);
+      box-shadow: 0 4px 0 rgba(0,0,0,0.10);
+      padding: 10px 2px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      transition: transform 0.08s ease;
+    }
+    .card:active { transform: scale(0.9); }
+    .card-emoji { font-size: clamp(40px, 13vw, 60px); line-height: 1; }
+    .card-label {
+      font-size: clamp(14px, 4vw, 18px);
+      color: #555;
+      text-transform: capitalize;
+    }
+    .swatch {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 3px solid rgba(255,255,255,0.9);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+  </style>
+</head>
+<body>
+  <div class="voicebar">
+    <select id="voiceSelect" aria-label="Choose voice"></select>
+    <button id="voiceTest" type="button">🔊 Test</button>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div class="stage" id="stage">
+    <div class="stage-emoji" id="stageEmoji">👋</div>
+    <div class="stage-word" id="stageWord">Tap a card!</div>
+    <div class="stage-hint">Pick one below to hear it</div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <script>
+    // ---- Content ----
+    const CATEGORIES = {
+      Animals: [
+        { emoji: "🐶", word: "dog" },
+        { emoji: "🐱", word: "cat" },
+        { emoji: "🐮", word: "cow" },
+        { emoji: "🐷", word: "pig" },
+        { emoji: "🐸", word: "frog" },
+        { emoji: "🐘", word: "elephant" },
+        { emoji: "🦁", word: "lion" },
+        { emoji: "🐰", word: "rabbit" },
+        { emoji: "🐝", word: "bee" },
+        { emoji: "🐠", word: "fish" },
+        { emoji: "🦆", word: "duck" },
+        { emoji: "🐴", word: "horse" }
+      ],
+      Colors: [
+        { color: "#e74c3c", word: "red" },
+        { color: "#e67e22", word: "orange" },
+        { color: "#f1c40f", word: "yellow" },
+        { color: "#2ecc71", word: "green" },
+        { color: "#3498db", word: "blue" },
+        { color: "#9b59b6", word: "purple" },
+        { color: "#ff8fb3", word: "pink" },
+        { color: "#8b5a2b", word: "brown" },
+        { color: "#2c3e50", word: "black" },
+        { color: "#ffffff", word: "white" }
+      ],
+      Shapes: [
+        { emoji: "⚫", word: "circle" },
+        { emoji: "🔺", word: "triangle" },
+        { emoji: "🟦", word: "square" },
+        { emoji: "⭐", word: "star" },
+        { emoji: "❤️", word: "heart" },
+        { emoji: "🔷", word: "diamond" },
+        { emoji: "🥚", word: "oval" },
+        { emoji: "➕", word: "cross" }
+      ]
+    };
+
+    const tabsEl = document.getElementById("tabs");
+    const gridEl = document.getElementById("grid");
+    const stageEl = document.getElementById("stage");
+    const stageEmoji = document.getElementById("stageEmoji");
+    const stageWord = document.getElementById("stageWord");
+
+    let current = "Animals";
+
+    // ---- Speech & voices ----
+    const voiceSelect = document.getElementById("voiceSelect");
+    const voiceTest = document.getElementById("voiceTest");
+    let voices = [];
+    let selectedVoice = null;
+
+    // Names that tend to be the higher-quality, natural-sounding voices
+    // across Windows, macOS/iOS, Android and Chrome.
+    const PREFERRED = [
+      "aria", "jenny", "michelle", "guy", "ana",        // Windows natural (Microsoft ... Online/Natural)
+      "samantha", "ava", "allison", "susan", "zoe",      // Apple
+      "google us english", "google uk english female",  // Chrome / Android
+      "natural", "neural", "online"                      // generic quality hints
+    ];
+
+    function scoreVoice(v) {
+      const name = (v.name || "").toLowerCase();
+      let score = 0;
+      // Strong preference for English so the words are pronounced correctly.
+      if (v.lang && v.lang.toLowerCase().startsWith("en")) score += 50;
+      // Reward known-good / natural voices.
+      PREFERRED.forEach((p, i) => {
+        if (name.includes(p)) score += (PREFERRED.length - i) + 20;
+      });
+      // Penalize the classic robotic ones.
+      if (name.includes("microsoft david")) score -= 5;
+      if (name.includes("microsoft mark")) score -= 5;
+      if (name.includes("espeak")) score -= 20;
+      return score;
+    }
+
+    function pickBestVoice() {
+      if (!voices.length) return null;
+      return voices
+        .map(v => ({ v, s: scoreVoice(v) }))
+        .sort((a, b) => b.s - a.s)[0].v;
+    }
+
+    function loadVoices() {
+      voices = window.speechSynthesis.getVoices() || [];
+      if (!voices.length) return;
+
+      // Show English voices first, then the rest.
+      const sorted = voices.slice().sort((a, b) => scoreVoice(b) - scoreVoice(a));
+
+      voiceSelect.innerHTML = "";
+      sorted.forEach(v => {
+        const opt = document.createElement("option");
+        opt.value = v.name;
+        opt.textContent = v.name + " (" + v.lang + ")";
+        voiceSelect.appendChild(opt);
+      });
+
+      // Restore a saved choice, else auto-pick the most natural one.
+      const saved = localStorage.getItem("ttsVoice");
+      const savedVoice = saved && voices.find(v => v.name === saved);
+      selectedVoice = savedVoice || pickBestVoice();
+      if (selectedVoice) voiceSelect.value = selectedVoice.name;
+    }
+
+    if ("speechSynthesis" in window) {
+      loadVoices();
+      // Voices often load asynchronously; this fires when they're ready.
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    voiceSelect.onchange = () => {
+      selectedVoice = voices.find(v => v.name === voiceSelect.value) || null;
+      if (selectedVoice) localStorage.setItem("ttsVoice", selectedVoice.name);
+      speak("Hello!");
+    };
+
+    voiceTest.onclick = () => speak("Hello! I am your reading buddy.");
+
+    function speak(text) {
+      if (!("speechSynthesis" in window)) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      if (selectedVoice) {
+        u.voice = selectedVoice;
+        u.lang = selectedVoice.lang;
+      }
+      u.rate = 0.9;    // gentle pace for little ears, but not sluggish
+      u.pitch = 1.05;  // near-natural; high pitch is what made it sound robotic
+      window.speechSynthesis.speak(u);
+    }
+
+    // ---- Render ----
+    function renderTabs() {
+      tabsEl.innerHTML = "";
+      Object.keys(CATEGORIES).forEach(name => {
+        const b = document.createElement("button");
+        b.className = "tab" + (name === current ? " active" : "");
+        b.textContent = name;
+        b.onclick = () => { current = name; renderTabs(); renderGrid(); };
+        tabsEl.appendChild(b);
+      });
+    }
+
+    function showOnStage(item) {
+      if (item.color) {
+        stageEmoji.innerHTML = '<div class="swatch" style="width:40vw;height:40vw;background:' + item.color + '"></div>';
+      } else {
+        stageEmoji.textContent = item.emoji;
+      }
+      stageWord.textContent = item.word;
+      stageEl.classList.remove("pop");
+      void stageEl.offsetWidth; // restart animation
+      stageEl.classList.add("pop");
+      speak(item.word);
+    }
+
+    function renderGrid() {
+      gridEl.innerHTML = "";
+      CATEGORIES[current].forEach(item => {
+        const c = document.createElement("button");
+        c.className = "card";
+        if (item.color) {
+          c.innerHTML =
+            '<div class="swatch" style="background:' + item.color + '"></div>' +
+            '<div class="card-label">' + item.word + '</div>';
+        } else {
+          c.innerHTML =
+            '<div class="card-emoji">' + item.emoji + '</div>' +
+            '<div class="card-label">' + item.word + '</div>';
+        }
+        c.onclick = () => showOnStage(item);
+        gridEl.appendChild(c);
+      });
+    }
+
+    // Warm up speech on first touch (mobile browsers require a user gesture)
+    document.body.addEventListener("touchstart", function warm() {
+      if ("speechSynthesis" in window) {
+        const u = new SpeechSynthesisUtterance("");
+        window.speechSynthesis.speak(u);
+      }
+      document.body.removeEventListener("touchstart", warm);
+    }, { once: true });
+
+    renderTabs();
+    renderGrid();
+  </script>
+</body>
+</html>
