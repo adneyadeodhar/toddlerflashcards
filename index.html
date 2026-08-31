@@ -181,18 +181,18 @@
     // ---- Content ----
     const CATEGORIES = {
       Animals: [
-        { emoji: "🐶", word: "dog" },
-        { emoji: "🐱", word: "cat" },
-        { emoji: "🐮", word: "cow" },
-        { emoji: "🐷", word: "pig" },
-        { emoji: "🐸", word: "frog" },
-        { emoji: "🐘", word: "elephant" },
-        { emoji: "🦁", word: "lion" },
-        { emoji: "🐰", word: "rabbit" },
-        { emoji: "🐝", word: "bee" },
-        { emoji: "🐠", word: "fish" },
-        { emoji: "🦆", word: "duck" },
-        { emoji: "🐴", word: "horse" }
+        { emoji: "🐶", word: "dog", sound: "sounds/dog.mp3" },
+        { emoji: "🐱", word: "cat", sound: "sounds/cat.mp3" },
+        { emoji: "🐮", word: "cow", sound: "sounds/cow.mp3" },
+        { emoji: "🐷", word: "pig", sound: "sounds/pig.mp3" },
+        { emoji: "🐸", word: "frog", sound: "sounds/frog.mp3" },
+        { emoji: "🐘", word: "elephant", sound: "sounds/elephant.mp3" },
+        { emoji: "🦁", word: "lion", sound: "sounds/lion.mp3" },
+        { emoji: "🐰", word: "rabbit", sound: "sounds/rabbit.mp3" },
+        { emoji: "🐝", word: "bee", sound: "sounds/bee.mp3" },
+        { emoji: "🐠", word: "fish", sound: "sounds/fish.mp3" },
+        { emoji: "🦆", word: "duck", sound: "sounds/duck.mp3" },
+        { emoji: "🐴", word: "horse", sound: "sounds/horse.mp3" }
       ],
       Colors: [
         { color: "#e74c3c", word: "red" },
@@ -300,8 +300,8 @@
 
     voiceTest.onclick = () => speak("Hello! I am your reading buddy.");
 
-    function speak(text) {
-      if (!("speechSynthesis" in window)) return;
+    function speak(text, onEnd) {
+      if (!("speechSynthesis" in window)) { if (onEnd) onEnd(); return; }
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       if (selectedVoice) {
@@ -310,7 +310,24 @@
       }
       u.rate = 0.9;    // gentle pace for little ears, but not sluggish
       u.pitch = 1.05;  // near-natural; high pitch is what made it sound robotic
+      if (onEnd) {
+        u.onend = onEnd;
+        u.onerror = onEnd;   // still play the sound even if speech fails
+      }
       window.speechSynthesis.speak(u);
+    }
+
+    // Play an animal sound file. Fails silently if the file is missing,
+    // so the app keeps working before you've added the sounds folder.
+    let currentAudio = null;
+    function playSound(src) {
+      if (!src) return;
+      try {
+        if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+        const audio = new Audio(src);
+        audio.play().catch(() => {});   // ignore missing file / autoplay blocks
+        currentAudio = audio;
+      } catch (e) { /* no-op */ }
     }
 
     // ---- Render ----
@@ -335,7 +352,8 @@
       stageEl.classList.remove("pop");
       void stageEl.offsetWidth; // restart animation
       stageEl.classList.add("pop");
-      speak(item.word);
+      // Say the word first; when it finishes, play the animal sound (if any).
+      speak(item.word, item.sound ? () => playSound(item.sound) : null);
     }
 
     function renderGrid() {
